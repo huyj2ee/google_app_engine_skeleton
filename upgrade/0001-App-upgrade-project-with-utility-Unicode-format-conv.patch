@@ -1,0 +1,304 @@
+From 3f937d2d3cdd1487652bb3317adaea0e998e45f5 Mon Sep 17 00:00:00 2001
+From: huyj2ee <huyj2ee@outlook.com>
+Date: Sat, 23 Mar 2019 09:28:31 -0700
+Subject: [PATCH] [App] upgrade project with utility 'Unicode format converter'
+
+---
+ .../webapp/controller/ConverterController.java     | 102 +++++++++++++++++++++
+ .../template/webapp/model/UnicodeFormatForm.java   |  57 ++++++++++++
+ src/main/resources/templates/convert/home.html     |  20 ++++
+ src/main/resources/templates/convert/unicode.html  |  54 +++++++++++
+ src/main/resources/templates/index.html            |  10 +-
+ 5 files changed, 238 insertions(+), 5 deletions(-)
+ create mode 100644 src/main/java/org/phamsodiep/template/webapp/controller/ConverterController.java
+ create mode 100644 src/main/java/org/phamsodiep/template/webapp/model/UnicodeFormatForm.java
+ create mode 100644 src/main/resources/templates/convert/home.html
+ create mode 100644 src/main/resources/templates/convert/unicode.html
+
+diff --git a/src/main/java/org/phamsodiep/template/webapp/controller/ConverterController.java b/src/main/java/org/phamsodiep/template/webapp/controller/ConverterController.java
+new file mode 100644
+index 0000000..ff55f99
+--- /dev/null
++++ b/src/main/java/org/phamsodiep/template/webapp/controller/ConverterController.java
+@@ -0,0 +1,102 @@
++package org.phamsodiep.template.webapp.controller;
++
++
++import java.util.regex.Matcher;
++import java.util.regex.Pattern;
++import javax.servlet.http.HttpServletRequest;
++import org.springframework.stereotype.Controller;
++import org.springframework.ui.ModelMap;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestMethod;
++import org.phamsodiep.template.webapp.model.UnicodeFormatForm;
++
++
++@Controller
++public class ConverterController {
++  private static final String NAMESPACE               = "convert";
++  private static final String URL_PREFIX              = "/" + ConverterController.NAMESPACE;
++  private static final String HOME_URL                = ConverterController.URL_PREFIX;
++  private static final String HOME_TEMPLATE           = ConverterController.NAMESPACE  + "/home";
++  private static final String UNICODE_CONVERTER       = "/unicode" ;
++  private static final String UNICODE_FORMAT_URL      = ConverterController.URL_PREFIX + ConverterController.UNICODE_CONVERTER;
++  private static final String UNICODE_FORMAT_TEMPLATE = ConverterController.NAMESPACE  + ConverterController.UNICODE_CONVERTER;
++
++
++  @RequestMapping(
++    value  = ConverterController.HOME_URL,
++    method = {RequestMethod.GET}
++  )
++  public String processConvertHomePage(ModelMap model) {
++    return ConverterController.HOME_TEMPLATE;
++  }
++
++  @RequestMapping(
++    value  = ConverterController.UNICODE_FORMAT_URL,
++    method = {RequestMethod.GET, RequestMethod.POST}
++  )
++  public String processUnicodeFormatConvertPage(
++    final UnicodeFormatForm formObj,
++    ModelMap model,
++    final HttpServletRequest req
++  ) {
++    if (req.getMethod().compareToIgnoreCase("POST") == 0) {
++      String output = this.doUnicodeFormatConvert(
++        formObj.getFormat(), formObj.getInput()
++      );
++      formObj.setOutput(output);
++    }
++    model.addAttribute("formModel", formObj);
++    return ConverterController.UNICODE_FORMAT_TEMPLATE;
++  }
++
++  private String doUnicodeFormatConvert(char format, String input) {
++    if (input.length() == 0) {
++      return "";
++    }
++    int inputLength = input.length();
++    StringBuffer result = new StringBuffer();
++    Pattern pattern = Pattern.compile("[a-zA-Z]");
++    Matcher matcher = pattern.matcher(input);
++    int previous = 0;
++    while (matcher.find()) {
++      char inCh = matcher.group().charAt(0);
++      char[] outCh = ConverterController.format(format, inCh);
++      int start = matcher.start();
++      if (previous < start) {
++        result.append(input.substring(previous, start));
++      }
++      previous = matcher.end();
++      result.append(outCh);
++    }
++    if (previous < inputLength) {
++      result.append(input.substring(previous, inputLength));
++    }
++    return result.toString();
++  }
++
++  private static char[] format(char format, char ch) {
++    boolean isBold = true;
++    if (format == 'i') {
++      isBold = false;
++    }
++    else if (format != 'b') {
++      return new char[] {ch};
++    }
++    final char highChar = (char)0xD835;
++    // Bold
++    final char lowBoldCharA = (char)0xDE08 - 26 - 26;
++    final char lowBoldChara = (char)0xDE08 - 26;
++    // Italic
++    final char lowItalicCharA = (char)0xDE08;
++    final char lowItalicChara = (char)0xDE08 + 26;
++    boolean isUpper = Character.isUpperCase(ch);
++    char lowChar = (char)
++      (isBold ?
++        (isUpper ? (ch - 'A' + lowBoldCharA) : (ch - 'a' + lowBoldChara)) :
++        (isUpper ? (ch - 'A' + lowItalicCharA) : (ch - 'a' + lowItalicChara))
++      );
++    int codePoint = Character.toCodePoint(highChar, lowChar);
++    return Character.toChars(codePoint);
++  }
++}
++
+diff --git a/src/main/java/org/phamsodiep/template/webapp/model/UnicodeFormatForm.java b/src/main/java/org/phamsodiep/template/webapp/model/UnicodeFormatForm.java
+new file mode 100644
+index 0000000..356e17a
+--- /dev/null
++++ b/src/main/java/org/phamsodiep/template/webapp/model/UnicodeFormatForm.java
+@@ -0,0 +1,57 @@
++package org.phamsodiep.template.webapp.model;
++
++
++import java.util.Collections;
++import java.util.HashMap;
++import java.util.Map;
++
++
++public class UnicodeFormatForm {
++  private static final Map<String, String> formats = UnicodeFormatForm.getFormatDomainValues();
++  private char format;
++  private String input;
++  private String output;
++
++
++  public UnicodeFormatForm() {
++    this.format = 'i';
++    this.input  = "";
++    this.output = "";
++  }
++
++  public final Map<String, String> getFormats() {
++    return UnicodeFormatForm.formats;
++  }
++
++  public char getFormat() {
++    return format;
++  }
++
++  public String getInput() {
++    return this.input;
++  }
++
++  public String getOutput() {
++    return output;
++  }
++
++  public void setFormat(char format) {
++    this.format = format;
++  }
++
++  public void setInput(String unicode) {
++    this.input = unicode;
++  }
++
++  public void setOutput(String output) {
++    this.output = output;
++  }
++
++  private static final Map<String, String> getFormatDomainValues() {
++    Map<String, String> formats = new HashMap<String, String>();
++    formats.put("Italic", "i");
++    formats.put("Bold", "b");
++    return Collections.unmodifiableMap(formats); 
++  }
++}
++
+diff --git a/src/main/resources/templates/convert/home.html b/src/main/resources/templates/convert/home.html
+new file mode 100644
+index 0000000..a90c803
+--- /dev/null
++++ b/src/main/resources/templates/convert/home.html
+@@ -0,0 +1,20 @@
++<!DOCTYPE html>
++<html>
++  <head>
++    <meta charset="UTF-8">
++    <title>
++      Converter utilities
++    </title>
++  </head>
++
++  <body>
++    <h1>
++      Converter utilities
++    </h1>
++    <div>
++      <a href="convert/unicode">Unicode format</a>
++    </div>
++  </body>
++</html>
++
++
+diff --git a/src/main/resources/templates/convert/unicode.html b/src/main/resources/templates/convert/unicode.html
+new file mode 100644
+index 0000000..79db445
+--- /dev/null
++++ b/src/main/resources/templates/convert/unicode.html
+@@ -0,0 +1,54 @@
++<!DOCTYPE html>
++<html>
++	<head>
++		<meta charset="UTF-8">
++		<title>
++		  Unicode format converter
++	  </title>
++	</head>
++
++	<body>
++    <h1>
++      Unicode format converter
++    </h1>
++	  <form
++	   action="/convert/unicode"
++	   th:object="${formModel}"
++	   method="post"
++	  >
++      <b>
++        Format:
++      </b>
++      <div th:each="item : *{formats}">
++        <input
++        type="radio"
++        th:field="*{format}"
++        th:value="${item.value}"
++        th:text="${item.key}"
++        >
++      </div>
++      <br /><br />
++      <b>
++        Input: <br /><br />
++      </b>
++      <textarea rows="25" cols="80" th:field="*{input}">
++        ...
++      </textarea>
++      <br /><br />
++      <button
++      type="submit"
++      >
++        Convert
++      </button>
++      <br /><br /><br /><br />
++      <b>
++        Output: <br /><br />
++      </b>
++      <textarea readonly=true rows="25" cols="80" th:field="*{output}">
++        ...
++      </textarea>
++	  </form>
++	</body>
++</html>
++
++
+diff --git a/src/main/resources/templates/index.html b/src/main/resources/templates/index.html
+index 22329c2..7fcee68 100644
+--- a/src/main/resources/templates/index.html
++++ b/src/main/resources/templates/index.html
+@@ -1,17 +1,17 @@
+ <html>
+   <head>
+     <title>
+-      Google app engine hi cloud web application
++      Google app engine utilities
+     </title>
+   </head>
+ 
+   <body>
+     <h1>
+-      Hi Cloud!
++      Google app engine utilities
+     </h1>
+-    <p>
+-      My name is Sephiroth. I worked for Shinra.
+-    </p>
++    <div>
++      <a href="convert">Converter utilities group</a>
++    </div>
+     </body>
+ </html>
+ 
+-- 
+2.11.0
+
