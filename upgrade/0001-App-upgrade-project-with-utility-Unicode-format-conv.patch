@@ -1,15 +1,15 @@
-From 3f937d2d3cdd1487652bb3317adaea0e998e45f5 Mon Sep 17 00:00:00 2001
+From a796703fa1b6f460aa8678755d2f4ebe28708e3b Mon Sep 17 00:00:00 2001
 From: huyj2ee <huyj2ee@outlook.com>
-Date: Sat, 23 Mar 2019 09:28:31 -0700
+Date: Sun, 24 Mar 2019 06:28:23 -0700
 Subject: [PATCH] [App] upgrade project with utility 'Unicode format converter'
 
 ---
- .../webapp/controller/ConverterController.java     | 102 +++++++++++++++++++++
- .../template/webapp/model/UnicodeFormatForm.java   |  57 ++++++++++++
- src/main/resources/templates/convert/home.html     |  20 ++++
- src/main/resources/templates/convert/unicode.html  |  54 +++++++++++
+ .../webapp/controller/ConverterController.java     | 191 +++++++++++++++++++++
+ .../template/webapp/model/UnicodeFormatForm.java   |  58 +++++++
+ src/main/resources/templates/convert/home.html     |  20 +++
+ src/main/resources/templates/convert/unicode.html  |  54 ++++++
  src/main/resources/templates/index.html            |  10 +-
- 5 files changed, 238 insertions(+), 5 deletions(-)
+ 5 files changed, 328 insertions(+), 5 deletions(-)
  create mode 100644 src/main/java/org/phamsodiep/template/webapp/controller/ConverterController.java
  create mode 100644 src/main/java/org/phamsodiep/template/webapp/model/UnicodeFormatForm.java
  create mode 100644 src/main/resources/templates/convert/home.html
@@ -17,10 +17,10 @@ Subject: [PATCH] [App] upgrade project with utility 'Unicode format converter'
 
 diff --git a/src/main/java/org/phamsodiep/template/webapp/controller/ConverterController.java b/src/main/java/org/phamsodiep/template/webapp/controller/ConverterController.java
 new file mode 100644
-index 0000000..ff55f99
+index 0000000..966d8f9
 --- /dev/null
 +++ b/src/main/java/org/phamsodiep/template/webapp/controller/ConverterController.java
-@@ -0,0 +1,102 @@
+@@ -0,0 +1,191 @@
 +package org.phamsodiep.template.webapp.controller;
 +
 +
@@ -36,13 +36,22 @@ index 0000000..ff55f99
 +
 +@Controller
 +public class ConverterController {
++  // View configuration: template names and urls
 +  private static final String NAMESPACE               = "convert";
-+  private static final String URL_PREFIX              = "/" + ConverterController.NAMESPACE;
-+  private static final String HOME_URL                = ConverterController.URL_PREFIX;
-+  private static final String HOME_TEMPLATE           = ConverterController.NAMESPACE  + "/home";
-+  private static final String UNICODE_CONVERTER       = "/unicode" ;
-+  private static final String UNICODE_FORMAT_URL      = ConverterController.URL_PREFIX + ConverterController.UNICODE_CONVERTER;
-+  private static final String UNICODE_FORMAT_TEMPLATE = ConverterController.NAMESPACE  + ConverterController.UNICODE_CONVERTER;
++  private static final String URL_PREFIX              = "/" + NAMESPACE;
++  private static final String HOME_URL                = URL_PREFIX;
++  private static final String HOME_TEMPLATE           = NAMESPACE + "/home";
++  private static final String UNICODE_CONVERTER       = "/unicode";
++  private static final String UNICODE_FORMAT_URL      = URL_PREFIX + UNICODE_CONVERTER;
++  private static final String UNICODE_FORMAT_TEMPLATE = NAMESPACE + UNICODE_CONVERTER;
++  // Unicode formater constants
++  private static final char   FMT_HIGH_CH             = (char)(0xD835);
++  private static final char   FMT_BOLD_LOW_UC_CH      = (char)(0xDE08 - 26*2);
++  private static final char   FMT_BOLD_LOW_LC_CH      = (char)(0xDE08 - 26);
++  private static final char   FMT_ITALIC_LOW_UC_CH    = (char)(0xDE08);
++  private static final char   FMT_ITALIC_LOW_LC_CH    = (char)(0xDE08 + 26);
++  private static final Pattern ITALIC_PATTERN;
++  private static final Pattern BOLD_PATTERN;
 +
 +
 +  @RequestMapping(
@@ -72,9 +81,62 @@ index 0000000..ff55f99
 +    return ConverterController.UNICODE_FORMAT_TEMPLATE;
 +  }
 +
++  private String doUnicodeEmbeddedFormatConvert(String input) {
++    StringBuffer result = new StringBuffer();
++    Matcher matcher = BOLD_PATTERN.matcher(input);
++    char format = '!';
++    int inputLength = input.length();
++    int i;
++    int pre = 0;
++    String oStr = null;
++    String iStr = null;
++
++    for (i = 0; i < inputLength; matcher.region(++i, inputLength)) {
++      // look for bold format request
++      matcher.usePattern(BOLD_PATTERN);
++      if (matcher.lookingAt()) {
++        format = 'b';
++      }
++      else {
++        // look for italic format request
++        matcher.usePattern(ITALIC_PATTERN);
++        if (matcher.lookingAt()) {
++          format = 'i';
++        }
++        else {
++          format = '!';
++        }
++      }
++      // Do format if it is requested
++      if (format != '!') {
++        i = matcher.start();
++        // Bold format pattern has just been matched
++        // Extract its matched string
++        iStr = matcher.group().substring(3, matcher.group().length() - 4);
++        // Do bold format
++        oStr = this.doUnicodeFormatConvert(format, iStr);
++        // Test if previous unformat string exists, if yes do append them
++        if (pre < i) {
++          result.append(input.substring(pre, i));
++        }
++        pre = matcher.end();
++        // Previous unformat string is processed, now append the formatted one
++        result.append(oStr);
++      }
++    }
++    // Test if there is unformat string remains, if yes do append them
++    if (pre < inputLength) {
++      result.append(input.substring(pre, inputLength));
++    }
++    return result.toString();
++  }
++
 +  private String doUnicodeFormatConvert(char format, String input) {
 +    if (input.length() == 0) {
 +      return "";
++    }
++    if (format == '*') {
++      return this.doUnicodeEmbeddedFormatConvert(input);
 +    }
 +    int inputLength = input.length();
 +    StringBuffer result = new StringBuffer();
@@ -105,30 +167,57 @@ index 0000000..ff55f99
 +    else if (format != 'b') {
 +      return new char[] {ch};
 +    }
-+    final char highChar = (char)0xD835;
-+    // Bold
-+    final char lowBoldCharA = (char)0xDE08 - 26 - 26;
-+    final char lowBoldChara = (char)0xDE08 - 26;
-+    // Italic
-+    final char lowItalicCharA = (char)0xDE08;
-+    final char lowItalicChara = (char)0xDE08 + 26;
 +    boolean isUpper = Character.isUpperCase(ch);
-+    char lowChar = (char)
-+      (isBold ?
-+        (isUpper ? (ch - 'A' + lowBoldCharA) : (ch - 'a' + lowBoldChara)) :
-+        (isUpper ? (ch - 'A' + lowItalicCharA) : (ch - 'a' + lowItalicChara))
-+      );
-+    int codePoint = Character.toCodePoint(highChar, lowChar);
++    char lowChar = (char)(isBold ?
++      (isUpper ?
++        (ch - 'A' + FMT_BOLD_LOW_UC_CH) :
++        (ch - 'a' + FMT_BOLD_LOW_LC_CH)
++      ) :
++      (isUpper ?
++        (ch - 'A' + FMT_ITALIC_LOW_UC_CH) :
++        (ch - 'a' + FMT_ITALIC_LOW_LC_CH)
++      )
++    );
++    int codePoint = Character.toCodePoint(FMT_HIGH_CH, lowChar);
 +    return Character.toChars(codePoint);
++  }
++
++  static {
++    ITALIC_PATTERN = Pattern.compile(
++      "(\\[i\\]){1}"        // start with "[i]"
++
++      + "[^"                // any thing but neither
++        + "(\\[i\\])"       //   "[i]"
++        + "(\\[/i\\])"      //   nor "[/i]"
++        + "(\\[b\\])"       //   "[b]"
++        + "(\\[/b\\])"      //   nor "[/b]"
++      + "]*"
++
++      + "(\\[/i\\]){1}"     // end with "[/i]"
++    );
++
++    BOLD_PATTERN = Pattern.compile(
++      "(\\[b\\]){1}"        // start with "[b]"
++
++      + "[^"                // any thing but neither
++        + "(\\[i\\])"       //   "[i]"
++        + "(\\[/i\\])"      //   nor "[/i]"
++        + "(\\[b\\])"       //   "[b]"
++        + "(\\[/b\\])"      //   nor "[/b]"
++      + "]*"
++
++      + "(\\[/b\\]){1}"     // end with "[/b]"
++    );
 +  }
 +}
 +
++
 diff --git a/src/main/java/org/phamsodiep/template/webapp/model/UnicodeFormatForm.java b/src/main/java/org/phamsodiep/template/webapp/model/UnicodeFormatForm.java
 new file mode 100644
-index 0000000..356e17a
+index 0000000..4ec53be
 --- /dev/null
 +++ b/src/main/java/org/phamsodiep/template/webapp/model/UnicodeFormatForm.java
-@@ -0,0 +1,57 @@
+@@ -0,0 +1,58 @@
 +package org.phamsodiep.template.webapp.model;
 +
 +
@@ -182,6 +271,7 @@ index 0000000..356e17a
 +    Map<String, String> formats = new HashMap<String, String>();
 +    formats.put("Italic", "i");
 +    formats.put("Bold", "b");
++    formats.put("Embedded", "*");
 +    return Collections.unmodifiableMap(formats); 
 +  }
 +}
